@@ -25,6 +25,7 @@ static ULONGLONG prev_idle   = 0;
 static ULONGLONG prev_kernel = 0;
 static ULONGLONG prev_user   = 0;
 static float     smooth_temp = 0.0f;
+static float     smooth_load = 0.0f;   /* 1 分钟负载的 EMA 平滑值(EST) */
 
 static ULONGLONG ft_to_u64(const FILETIME * t)
 {
@@ -39,6 +40,7 @@ void data_source_init(void)
     prev_kernel = ft_to_u64(&kernel);
     prev_user   = ft_to_u64(&user);
     smooth_temp = 45.0f;
+    smooth_load = 0.0f;
 }
 
 void data_source_get(cpu_info_t * out)
@@ -71,10 +73,25 @@ void data_source_get(cpu_info_t * out)
     /* 功耗估算(EST):与板子公式同构(频率项用 1.0 归一,Windows 无实时频率 API) */
     float power = 0.35f + usage * 0.012f;
 
+    /* 内存使用率:GlobalMemoryStatusEx 直接给出 0-100 的 dwMemoryLoad */
+    MEMORYSTATUSEX ms;
+    ms.dwLength = sizeof(ms);
+    float mem_usage = 0.0f;
+    if (GlobalMemoryStatusEx(&ms)) mem_usage = (float)ms.dwMemoryLoad;
+
+    /* 负载均值(EST):Windows 无 1 分钟负载均值的公共 API,
+     * 用 CPU 占用率的重平滑 EMA 近似(0.9/0.1,时间常数约 10s) */
+    smooth_load = 0.9f * smooth_load + 0.1f * usage;
+    if (smooth_load < 0)   smooth_load = 0;
+    if (smooth_load > 100) smooth_load = 100;
+
     out->cpu_usage = usage;
     out->cpu_temp  = smooth_temp;
     out->cpu_power = power;
     out->cpu_freq  = 1400.0f;
+    out->mem_usage  = mem_usage;
+    out->load_avg   = smooth_load;
+    out->uptime_sec = (uint32_t)(GetTickCount64() / 1000);
 }
 
 #else
@@ -82,6 +99,7 @@ void data_source_get(cpu_info_t * out)
 /* ===================== board:真实数据 ===================== */
 #include <stdint.h>
 #include <inttypes.h>
+#include <string.h>
 
 static uint64_t prev_total = 0, prev_idle = 0;
 
@@ -117,6 +135,28 @@ static float read_sysfs_double(const char * path)
     return (float)v;
 }
 
+/* 读 /proc/meminfo 里 "MemTotal: 123456 kB" 类字段,返回 kB 值;失败返回 -1 */
+static int read_meminfo_kb(const char * key, unsigned long long * out)
+{
+    FILE * f = fopen("/proc/meminfo", "r");
+    if (!f) return -1;
+
+    char line[128];
+    int found = 0;
+    while (fgets(line, sizeof(line), f)) {
+        char name[64];
+        unsigned long long v;
+        if (sscanf(line, "%63s %llu kB", name, &v) == 2 &&
+            strcmp(name, key) == 0) {
+            *out  = v;
+            found = 1;
+            break;
+        }
+    }
+    fclose(f);
+    return found ? 0 : -1;
+}
+
 void data_source_init(void)
 {
     /* 预热:第一次采样只记录基线,get() 用差值计算占用率 */
@@ -129,6 +169,7 @@ void data_source_get(cpu_info_t * out)
     if (read_cpu_stat(&total, &idle) != 0) {
         out->cpu_usage = 0; out->cpu_temp = 0;
         out->cpu_power = 0; out->cpu_freq = 0;
+        out->mem_usage = 0; out->load_avg = 0; out->uptime_sec = 0;
         return;
     }
 
@@ -152,10 +193,27 @@ void data_source_get(cpu_info_t * out)
     /* 功耗估算(EST):系数为典型值,非精确 —— UI 标 "EST" */
     float power = 0.35f + usage * 0.011f * (freq_mhz / 1400.0f);
 
+    /* 内存使用率:MemAvailable/MemTotal,读失败给默认 0 */
+    float mem_usage = 0.0f;
+    unsigned long long mem_total = 0, mem_avail = 0;
+    if (read_meminfo_kb("MemTotal", &mem_total) == 0 &&
+        read_meminfo_kb("MemAvailable", &mem_avail) == 0 && mem_total > 0) {
+        mem_usage = 100.0f * (1.0f - (float)mem_avail / (float)mem_total);
+        if (mem_usage < 0)   mem_usage = 0;
+        if (mem_usage > 100) mem_usage = 100;
+    }
+
+    /* 负载: /proc/loadavg 第一个数即 1 分钟均值;时长:/proc/uptime 第一个数即秒 */
+    float load = read_sysfs_double("/proc/loadavg");
+    float up   = read_sysfs_double("/proc/uptime");
+
     out->cpu_usage = usage;
     out->cpu_temp  = temp > 0 ? temp : 0;
     out->cpu_power = power;
     out->cpu_freq  = freq_mhz;
+    out->mem_usage  = mem_usage;
+    out->load_avg   = load >= 0 ? load : 0.0f;
+    out->uptime_sec = up > 0 ? (uint32_t)up : 0;
 }
 
 #endif /* _WIN32 */

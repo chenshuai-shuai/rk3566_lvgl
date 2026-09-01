@@ -32,7 +32,7 @@ LDFLAGS = -lSDL2 -lm
 # 一把抓 LVGL src 下所有 .c(含 sdl 驱动)+ demos
 LVGL_SRC = $(shell find lvgl/src -name '*.c') $(shell find lvgl/demos -name '*.c')
 
-SRCS = main_sim.c ui_ui.c data_source.c $(LVGL_SRC)
+SRCS = main_sim.c data_source.c page_nav.c status_bar.c page_dial.c page_cube.c page_test.c $(LVGL_SRC)
 OBJS = $(SRCS:.c=.o)
 
 all: ui_sim.exe

@@ -12,7 +12,7 @@ LVGL_SRC = $(shell find lvgl/src -name '*.c') $(shell find lvgl/demos -name '*.c
 
 # 板子版入口(2026-09-01 拆分):main_board.c = 原 main.c(fbdev+evdev+指针+心跳)
 # 注意:lv_conf.h 中 LV_USE_SDL=0 → sdl 驱动源码被 #if LV_USE_SDL 编成空文件,链接无冲突
-SRCS = main_board.c ui_ui.c data_source.c $(LVGL_SRC)
+SRCS = main_board.c data_source.c page_nav.c status_bar.c page_dial.c page_cube.c page_test.c $(LVGL_SRC)
 OBJS = $(SRCS:.c=.o)
 
 all: lv_demo
