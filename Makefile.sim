@@ -1,0 +1,47 @@
+# ===== LVGL PC 仿真(Windows + MSYS2/MinGW64 + SDL2) =====
+#
+# 一次性依赖(在 MSYS2 终端运行):
+#   pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-make
+#
+# 用法:
+#   make -f Makefile.sim              # 编译
+#   ./ui_sim.exe                      # 运行(480x800 窗口,鼠标可用)
+#   make -f Makefile.sim clean
+#
+# ⚠️ 重要:必须用 MSYS 的 make(/usr/bin/make),不要用 mingw32-make!
+#    mingw32-make(MinGW 原生 make)的 $(shell find -name '*.c') 引号解析有 bug,
+#    find 收到被 glob 展开的路径,LVGL 源文件列表为空 → 链接全部 undefined reference。
+#    (已实测:mingw32-make count=0,MSYS make count=466)
+#
+# 说明:
+#   - 用 LV_CONF_PATH 指向 lv_conf_sim.h(LV_USE_SDL=1)
+#   - 板子版配置 lv_conf.h(LV_USE_SDL=0),互不影响
+#   - SHELL := sh:mingw32-make 默认 cmd.exe,find -name 语法不认
+#   - SDL_MAIN_HANDLED 模式(main_sim.c),只链 -lSDL2
+
+# 关键:mingw32-make 默认用 cmd.exe 当 shell(不认 find -name 语法),
+# 必须指定用 MSYS 的 sh(find 才是 GNU findutils)
+SHELL := sh
+
+CC      := gcc
+CFLAGS  = -O2 -Wall -I. -Ilvgl -Ilvgl/src
+CFLAGS += -DLV_CONF_PATH='"lv_conf_sim.h"'
+# 用 SDL_MAIN_HANDLED 模式(main_sim.c 顶部 #define),无需 SDL2main
+LDFLAGS = -lSDL2 -lm
+
+# 一把抓 LVGL src 下所有 .c(含 sdl 驱动)+ demos
+LVGL_SRC = $(shell find lvgl/src -name '*.c') $(shell find lvgl/demos -name '*.c')
+
+SRCS = main_sim.c ui_ui.c data_source.c $(LVGL_SRC)
+OBJS = $(SRCS:.c=.o)
+
+all: ui_sim.exe
+
+ui_sim.exe: $(OBJS)
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+clean:
+	rm -f ui_sim.exe $(OBJS)

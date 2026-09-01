@@ -1,0 +1,5 @@
+*.o
+lv_demo
+ui_sim.exe
+git_backup*
+lvgl/
