@@ -32,13 +32,20 @@ adb shell /root/lv_demo
 
 ## 关键约定
 
-- **lvgl 源码不入库**:从 VM 拷回(见下)或官方仓库 clone 到 `lvgl/` 目录再编译
+- **lvgl 源码不入库**:从 VM 拷回或官方仓库 clone 到 `lvgl/` 目录再编译
   ```bash
   # 方式1(推荐):VM 开机后从 Z 盘拷回(与当前工程同版本)
-  robocopy "Z:inuxmy_projectv_demovgl" "C:VirtualBox_shareI_appvgl" /E /XF "*.o" /XD ".git"
+  robocopy "Z:\linux\my_project\lv_demo\lvgl" "C:\VirtualBox_share\ui_app\lvgl" /E /XF "*.o" /XD ".git"
   # 方式2:官方仓库克隆(需网络良好)
   git clone --depth 1 https://github.com/lvgl/lvgl.git lvgl
   ```
+
+- **LVGL 版本锁定:v9.6.0**(2026-09-01 确认,`lvgl/include/lvgl/lv_version.h`:`LVGL_VERSION_MAJOR=9 MINOR=6 PATCH=0`,官方 master 分支)
+  ```bash
+  # 任何电脑上核对当前 lvgl 版本的命令:
+  grep -E "LVGL_VERSION_(MAJOR|MINOR|PATCH)" lvgl/include/lvgl/lv_version.h
+  ```
+  ⚠️ 升级 lvgl 前先看 CHANGELOG;本项目代码按 v9.6 API 编写(v9 无 `lv_indev_set_press_limit`/`LV_EVENT_CHILD_CLICKED`,浮点显示须绕内置 sprintf)
 
 - **源码 LF 行尾**(VM 交叉编译需要),git 已设 `core.autocrlf=false`
 - sdl 驱动源码被 `#if LV_USE_SDL` 包裹(LV_USE_SDL=0 时板子链接无冲突)
